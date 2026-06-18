@@ -1,0 +1,197 @@
+/**
+ * Admin Routes
+ * All routes require admin authentication
+ */
+
+const express = require('express');
+const router = express.Router();
+const { authenticate, isAdmin } = require('../middleware/auth');
+const adminController = require('../controllers/adminController');
+const masterDataController = require('../controllers/masterDataController');
+const systemSettingsController = require('../controllers/systemSettingsController');
+const multer = require('multer');
+const path = require('path');
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'photo-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+// SMTP connection test route — GET /admin/test-smtp
+router.get('/test-smtp', async (req, res) => {
+  try {
+    const { verifyConnection } = require('../utils/emailService');
+    const result = await verifyConnection();
+    if (result.success) {
+      return res.json({ success: true, message: '✅ SMTP connection is working correctly!' });
+    }
+    return res.status(500).json({
+      success: false,
+      message: '❌ SMTP connection failed.',
+      error: result.error
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Apply authentication middleware to all routes BELOW this line
+router.use(authenticate);
+router.use(isAdmin);
+
+// Driver management routes
+router.get('/drivers', adminController.getAllDrivers);
+router.get('/drivers/:id', adminController.getDriverById);
+router.post('/drivers', adminController.createDriver);
+router.put('/drivers/:id', adminController.updateDriver);
+router.delete('/drivers/:id', adminController.deleteDriver);
+
+// Customer management routes
+router.get('/customers', adminController.getAllCustomers);
+router.post('/customers', adminController.createCustomer);
+router.put('/customers/:id', adminController.updateCustomer);
+router.delete('/customers/:id', adminController.deleteCustomer);
+
+// Ticket management routes
+router.get('/tickets', adminController.getAllTickets);
+router.get('/tickets/:id', adminController.getTicketById);
+router.get('/months', adminController.getAvailableMonths);
+router.put('/tickets/:id', adminController.updateTicket);
+router.delete('/tickets/:id', adminController.deleteTicket);
+router.put('/tickets/:id/status', adminController.updateTicketStatus);
+router.get('/months', adminController.getAvailableMonths);
+
+// Dashboard routes
+router.get('/dashboard/stats', adminController.getDashboardStats);
+
+// Invoice routes
+router.get('/invoices/generate', adminController.generateInvoice);
+router.get('/invoices/download/:customerId', adminController.downloadInvoice);
+router.post('/invoices/send', adminController.sendInvoiceEmailHandler);
+
+// Settlement routes
+router.get('/settlements/generate', adminController.generateSettlement);
+router.get('/settlements/download/:driverId', adminController.downloadSettlement);
+router.post('/settlements/send', adminController.sendSettlementEmailHandler);
+
+// Data setup routes (default bill rates)
+router.get('/settings/bill-rates', adminController.getBillRates);
+router.put('/settings/bill-rates', adminController.updateBillRates);
+
+// Truck management routes
+router.get('/trucks', adminController.getAllTrucks);
+router.post('/trucks', adminController.createTruck);
+router.put('/trucks/:id', adminController.updateTruck);
+router.delete('/trucks/:id', adminController.deleteTruck);
+
+// Trailer management routes
+router.get('/trailers', adminController.getAllTrailers);
+router.post('/trailers', adminController.createTrailer);
+router.put('/trailers/:id', adminController.updateTrailer);
+router.delete('/trailers/:id', adminController.deleteTrailer);
+
+// Company management routes
+router.get('/companies', adminController.getAllCompanies);
+router.post('/companies', adminController.createCompany);
+router.put('/companies/:id', adminController.updateCompany);
+router.delete('/companies/:id', adminController.deleteCompany);
+
+// Master Data Settings routes
+router.get('/master/customers', masterDataController.getAllCustomerMaster);
+router.post('/master/customers', masterDataController.createCustomerMaster);
+router.delete('/master/customers/:id', masterDataController.deleteCustomerMaster);
+
+router.get('/master/equipment-types', masterDataController.getAllEquipmentTypes);
+router.post('/master/equipment-types', masterDataController.createEquipmentType);
+router.delete('/master/equipment-types/:id', masterDataController.deleteEquipmentType);
+
+router.get('/master/trucks', masterDataController.getAllTruckMaster);
+router.post('/master/trucks', masterDataController.createTruckMaster);
+router.delete('/master/trucks/:id', masterDataController.deleteTruckMaster);
+
+// Configure multer specifically for logo uploads
+const logoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const fs = require('fs');
+    const logoDir = 'uploads/logos';
+    if (!fs.existsSync(logoDir)) {
+      fs.mkdirSync(logoDir, { recursive: true });
+    }
+    cb(null, logoDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, 'company_logo' + ext);
+  }
+});
+
+const logoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, 'uploads/tmp'), // staging area
+    filename: (req, file, cb) => cb(null, `logo_${Date.now()}${path.extname(file.originalname)}`)
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // increased to 10MB
+  fileFilter: (req, file, cb) => {
+    const allowed = /jpeg|jpg|png|gif|webp/;
+    const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
+    const mimeOk = allowed.test(file.mimetype);
+    if (extOk && mimeOk) return cb(null, true);
+    cb(new Error('Only image files (JPG, PNG, GIF, WebP) are allowed'));
+  }
+});
+
+// System Settings routes
+router.get('/system-settings', systemSettingsController.getSystemSettings);
+router.put('/system-settings', systemSettingsController.updateSystemSettings);
+
+// Logo upload route — POST /admin/upload-logo
+router.post('/upload-logo', (req, res) => {
+  logoUpload.single('logo')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ success: false, message: 'File too large. Maximum allowed size is 10MB.' });
+      }
+      return res.status(400).json({ success: false, message: err.message || 'File upload error' });
+    }
+    adminController.uploadLogo(req, res);
+  });
+});
+
+// SMTP connection test route — GET /admin/test-smtp
+router.get('/test-smtp', async (req, res) => {
+  const { verifyConnection } = require('../utils/emailService');
+  const result = await verifyConnection();
+  if (result.success) {
+    return res.json({ success: true, message: '✅ SMTP connection is working correctly!' });
+  }
+  return res.status(500).json({
+    success: false,
+    message: '❌ SMTP connection failed. Check your .env SMTP settings.',
+    error: result.error,
+    hint: 'For Gmail: ensure SMTP_PASS is a 16-character App Password, not your regular Gmail password. Generate one at: https://myaccount.google.com/apppasswords'
+  });
+});
+
+module.exports = router;
