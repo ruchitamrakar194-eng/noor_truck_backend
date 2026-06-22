@@ -13,7 +13,7 @@ const INSPECTION_INSERT_FIELDS = [
   'rear_vision_mirrors', 'lights_reflectors', 'parking_service_brakes', 'airbrake_adjustment', 'driver_seatbelt',
   'hydraulic_brake_fluid', 'unit_condition', 'horns', 'air_light_lines', 'coupling_device', 'tires', 'wheels_rims',
   'emergency_equipment', 'load_security', 'fuel_system', 'exhaust_system', 'suspension_system', 'landing_gear', 'other_items',
-  'remarks', 'condition_okay', 'no_correction_needed', 'defects_corrected', 'driver_signature'
+  'remarks', 'condition_okay', 'no_correction_needed', 'defects_corrected', 'driver_signature', 'status'
 ];
 
 /**
@@ -131,6 +131,10 @@ const createInspection = async (req, res) => {
       data.km_driven = end >= start ? end - start : 0;
     }
 
+    if (!data.status) {
+      data.status = 'draft';
+    }
+
     const fields = Object.keys(data);
     const placeholders = fields.map(() => '?').join(', ');
     const values = Object.values(data);
@@ -199,11 +203,15 @@ const updateInspection = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied. You can only update your own reports.' });
     }
 
+    // Parse km fields safely
+    if (data.km_start !== undefined) data.km_start = data.km_start === '' || data.km_start === null ? 0 : parseInt(data.km_start, 10);
+    if (data.km_end !== undefined) data.km_end = data.km_end === '' || data.km_end === null ? 0 : parseInt(data.km_end, 10);
+
     // Calculate km_driven if start or end km are provided
     if (data.km_start !== undefined || data.km_end !== undefined) {
-      const start = data.km_start !== undefined ? parseInt(data.km_start) : parseInt(report.km_start || 0);
-      const end = data.km_end !== undefined ? parseInt(data.km_end) : parseInt(report.km_end || 0);
-      data.km_driven = end - start;
+      const start = data.km_start !== undefined ? data.km_start : parseInt(report.km_start || 0, 10);
+      const end = data.km_end !== undefined ? data.km_end : parseInt(report.km_end || 0, 10);
+      data.km_driven = end >= start ? end - start : 0;
     }
 
     // Filter out restricted fields
